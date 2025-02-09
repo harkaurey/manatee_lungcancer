@@ -20,7 +20,7 @@ source("bss_functions.R")
 source("search_functions.R")
 
 # scripts for lung cancer signature
-source("LC_scripts.R")
+source("lung_cancer_scripts.R")
 
 #### Load, filter and format data ----
 LC.GSEs = readRDS("/labs/khatrilab/hongzheng/lung/obj/LC.GSEs.rds")
