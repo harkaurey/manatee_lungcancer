@@ -45,13 +45,13 @@ df$prob <- predict(mod1, type = "response")
 dfNOcontrol$prob <- predict(mod2, type = "response")
 ```
 
-## ROC curve
+## ROC curve first plot
 ```{r}
 thresholds <- seq(0, 1, by = 0.01)
 
 tpr <- numeric(length(thresholds))  # sensitivity
 fpr <- numeric(length(thresholds))  # 1 - specificity
-
+#values for first model
 for (i in seq_along(thresholds)) {
   th <- thresholds[i]
   
@@ -67,6 +67,36 @@ for (i in seq_along(thresholds)) {
 }
 ```
 
+## ROC curve for the second model
+
+```{r}
+thresholds2 <- seq(0, 1, by = 0.01)
+
+tpr2 <- numeric(length(thresholds2))  # sensitivity
+fpr2 <- numeric(length(thresholds2))  # 1 - specificity
+#values for first model
+for (i in seq_along(thresholds2)) {
+  th2 <- thresholds2[i]
+  
+  pred2 <- ifelse(dfNOcontrol$prob >= th2, 1, 0)
+  
+  TP2 <- sum(pred2 == 1 & dfNOcontrol$group == 1)
+  FP2 <- sum(pred2 == 1 & dfNOcontrol$group == 0)
+  TN2 <- sum(pred2 == 0 & dfNOcontrol$group == 0)
+  FN2 <- sum(pred2 == 0 & dfNOcontrol$group == 1)
+  
+  tpr2[i] <- TP2 / (TP2 + FN2)
+  fpr2[i] <- FP2 / (FP2 + TN2)
+}
+```
+
+
+## Calculating the auc's
+```{r}
+auc <- sum(diff(fpr) * (head(tpr, -1) + tail(tpr, -1)) / 2)
+auc2 <- sum(diff(fpr2) * (head(tpr2, -1) + tail(tpr2, -1)) / 2)
+```
+
 
 ## plot
 ```{r}
@@ -75,10 +105,8 @@ plot(fpr, tpr, type = "l",
      ylab = "True Positive Rate",
      main = "ROC Curve")
 
-abline(0, 1, col = "gray", lty = 2)
+abline(0, 1, col = "blue", lty = 2)
+lines(fpr2, tpr2, col = "red")
 
-
-auc <- sum(diff(fpr) * (head(tpr, -1) + tail(tpr, -1)) / 2)
-auc
 ```
 
