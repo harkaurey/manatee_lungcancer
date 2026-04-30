@@ -68,77 +68,9 @@ get_auc <- function(pred, truth) {
 }
 ```
 
-## Fit models
+##  Fit models
 
 ```{r}
 #| label: build models
 
-# model with lung cancer score only 
-m1 <- glm(y ~ lungcancerscore, data = df, family = "binomial")
-p1 <- predict(m1, type = "response")
-r1 <- get_auc(p1, df$y)
-r1$model <- "lung cancer score"
-
-#model with only age 
-m2 <- glm(y ~ age, data = df, family = "binomial")
-p2 <- predict(m2, type = "response")
-r2 <- get_auc(p2, df$y)
-r2$model <- "age"
-
-#model with smoking only 
-m3 <- glm(y ~ smoking_binary, data = df, family = "binomial")
-p3 <- predict(m3, type = "response")
-r3 <- get_auc(p3, df$y)
-r3$model <- "smoking"
-
-#model with age + smoking 
-m4 <- glm(y ~ age + smoking_binary, data = df, family = "binomial")
-p4 <- predict(m4, type = "response")
-r4 <- get_auc(p4, df$y)
-r4$model <- "age + smoking"
-
-#full model with everything 
-m5 <- glm(y ~ lungcancerscore + age + smoking_binary, data = df, family = "binomial")
-p5 <- predict(m5, type = "response")
-r5 <- get_auc(p5, df$y)
-r5$model <- "lung cancer score + age + smoking"
-
-#combine results 
-
-results <- bind_rows(r1, r2, r3, r4, r5)
-results$method <- "logistic regression"
-```
-
-## Reproducing the Graph
-
-```{r}
-#| label: pre-plot with only logistic regression 
-results$model <- factor(results$model, levels = c(
-  "lung cancer score",
-  "age",
-  "smoking",
-  "age + smoking",
-  "lung cancer score + age + smoking"
-))
-
-ggplot(results, aes(x = auc, y = model)) +
-  
-  geom_point(size = 3) +
-  
-  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci), height = 0.2) +
-  
-  geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
-             linetype = "dashed", color = "grey70") +
-  
-  scale_y_discrete(limits = rev(levels(results$model))) +   
-  
-  labs(
-    title = "AUC of lung cancer vs control/benign (validation UK)",
-    x = "AUC",
-    y = NULL
-  ) +
-  
-  xlim(0.55, 0.9) +
-  
-  theme_minimal()
 ```
