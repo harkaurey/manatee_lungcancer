@@ -68,7 +68,7 @@ get_auc <- function(pred, truth) {
 }
 ```
 
-##  Fit models
+## Fit models
 
 ```{r}
 #| label: build models
