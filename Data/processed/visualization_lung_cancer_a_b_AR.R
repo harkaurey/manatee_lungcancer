@@ -106,7 +106,9 @@ plot(roc1,
      col = "darkgrey",
      lwd = 3,
      legacy.axes = TRUE,
-     main = "Lung cancer score, validation (UK)")
+     main = "Lung cancer score, validation (UK)",
+     xlab = "false positive rate (1-specificity)",
+     ylab = "true positive rate (sensitivity)")
 
 plot(roc2,
      add = TRUE,
@@ -115,32 +117,29 @@ plot(roc2,
 
 legend("bottomright",
        legend = c(
-         paste0("lung cancer vs control/benign\nAUC=",
-                round(auc(roc1), 3)),
-         paste0("lung cancer vs benign\nAUC=",
-                round(auc(roc2), 3))
+         
+         paste0(
+           "lung cancer vs control/benign\n",
+           "AUC = ", round(auc(roc1), 3),
+           " (95% CI ",
+           round(ci.auc(roc1)[1], 3),
+           "-",
+           round(ci.auc(roc1)[3], 3),
+           ")"
+         ),
+         
+         paste0(
+           "lung cancer vs benign\n",
+           "AUC = ", round(auc(roc2), 3),
+           " (95% CI ",
+           round(ci.auc(roc2)[1], 3),
+           "-",
+           round(ci.auc(roc2)[3], 3),
+           ")"
+         )
+         
        ),
        col = c("darkgrey", "lightgrey"),
        lwd = 3,
        bty = "n")
 
-legend("bottomright",
-       legend = c(
-         paste0("lung cancer vs control/benign\nAUC=",
-                round(auc(roc1), 3)),
-         " (95% CI ",
-         round(ci.auc(roc1)[1], 3),
-         "-",
-         round(ci.auc(roc1)[3], 3),
-         ")",
-         paste0("lung cancer vs benign\nAUC=",
-                round(auc(roc2), 3)),
-         " (95% CI ",
-         round(ci.auc(roc2)[1], 3),
-         "-",
-         round(ci.auc(roc2)[3], 3),
-         ")"
-       ),
-       col = c("darkgrey", "lightgrey"),
-       lwd = 3,
-       bty = "n")
