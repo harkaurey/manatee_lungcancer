@@ -53,29 +53,21 @@ print(test_result$p.value)
 
 # Figure 4B:
 
-ggplot(dd, aes(x = group, y = lungcancerscore)) +
+ggplot(dd, aes(group, lungcancerscore)) +
   
-  # Violinplot
-  geom_violin(fill = "grey90",
-              color = "grey60",
-              alpha = 0.8,
-              trim = FALSE) +
+  geom_violin(fill = "grey90") +
   
-  # Points
-  geom_point(aes(color = group),
-             size = 2,
-             alpha = 0.25,
-             position = position_jitter(width = 0.15)) +
-  
-  # Boxplot
   geom_boxplot(width = 0.12,
                fill = "white",
                outlier.shape = NA) +
   
-  # Achsenbeschriftung
-  labs(x = "",
-       y = "lung cancer score",
-       title = "Lung cancer score, validation (UK)") +
+  geom_point(aes(color = group),
+             alpha = 0.3,
+             position = position_jitter(width = 0.15)) +
+  labs(
+    x = "",
+    y = "Lung cancer score"
+  ) +
   
   stat_compare_means(
     comparisons = list(
@@ -83,16 +75,14 @@ ggplot(dd, aes(x = group, y = lungcancerscore)) +
       c("benign", "lung cancer"),
       c("control", "lung cancer")
     ),
-    method = "t.test", # Berechnet den t-Test
-    
+    method = "wilcox.test",
+    p.adjust.method = "bonferroni"
   ) +
   
-  # Theme
   theme_minimal() +
   
-  # Do not put any legend
-  theme(legend.position = "none")
-
+  # Legende entfernen
+  theme(legend.position = "none", axis.text.x = element_text(size = 20), axis.title.y = element_text(size = 20))
 
 
 
