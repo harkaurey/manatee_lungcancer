@@ -1,0 +1,80 @@
+---
+author: "Anja Morgenthaler"
+date: today
+toc: true
+format:
+  html:
+    number_sections: true
+editor_options: 
+  chunk_output_type: console
+---
+
+## Import Data
+
+```{r}
+library(readr)
+df <- read.csv("/Users/anjam/Desktop/Miniproject/Data/processed/41698_2025_1043_MOESM3_ESM.csv")
+
+#filter for only the variables we need
+
+library(dplyr)
+
+df <- df[, c("age", "smokingstatus", "group", "lungcancerscore")]
+```
+
+## cleaning data
+
+```{r}
+df$group <- ifelse(df$group =="lung cancer", 1, 0)
+
+```
+
+## fitting a model
+```{r}
+mod1 <- glm(group ~ lungcancerscore + age + smokingstatus, data = df, family = binomial)
+summary(mod1)
+```
+
+## predicting 
+
+```{r}
+df$prob <- predict(mod1, type = "response")
+```
+
+## ROC curve
+```{r}
+thresholds <- seq(0, 1, by = 0.01)
+
+tpr <- numeric(length(thresholds))  # sensitivity
+fpr <- numeric(length(thresholds))  # 1 - specificity
+
+for (i in seq_along(thresholds)) {
+  th <- thresholds[i]
+  
+  pred <- ifelse(df$prob >= th, 1, 0)
+  
+  TP <- sum(pred == 1 & df$group == 1)
+  FP <- sum(pred == 1 & df$group == 0)
+  TN <- sum(pred == 0 & df$group == 0)
+  FN <- sum(pred == 0 & df$group == 1)
+  
+  tpr[i] <- TP / (TP + FN)
+  fpr[i] <- FP / (FP + TN)
+}
+```
+
+
+## plot
+```{r}
+plot(fpr, tpr, type = "l",
+     xlab = "False Positive Rate",
+     ylab = "True Positive Rate",
+     main = "ROC Curve")
+
+abline(0, 1, col = "gray", lty = 2)
+
+
+auc <- sum(diff(fpr) * (head(tpr, -1) + tail(tpr, -1)) / 2)
+auc
+```
+
