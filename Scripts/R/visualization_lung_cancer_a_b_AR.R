@@ -19,16 +19,39 @@ library(MuMIn)
 dd<- read.csv("../../Desktop/Project/Data/processed/41698_2025_1043_MOESM3_ESM.csv",stringsAsFactors= T)
 View(dd)
 
-# Visualize the Boxplot:
+# Visualize the Boxplot of Figure 4A:
 
 # Change the x-axis to contrl, benign and lung cancer.
 dd$group<- factor(dd$group,levels= levels(dd$group)[c(2, 1, 3)])
 
-# Calculate the p values between the groops:
+# Calculate the p values between the groups:
+
 t.test(lungcancerscore ~ group,
        data = subset(dd,
                      group %in% c("control", "benign")))
 
+t.test(lungcancerscore ~ group,
+       data = subset(dd,
+                     group %in% c("benign", "lung cancer")))
+
+t.test(lungcancerscore ~ group,
+       data = subset(dd,
+                     group %in% c("control", "lung cancer")))
+
+# Find the p values in a different way, to see if the calculation was correct.
+
+group1 <- dd$lungcancerscore[dd$group == "control"]
+group2 <- dd$lungcancerscore[dd$group == "lung cancer"]
+
+# Berechne den t-Test
+test_result <- t.test(group1, group2)
+
+# Zeige den p-Wert
+print(test_result$p.value)
+
+
+
+# Figure 4B:
 
 ggplot(dd, aes(x = group, y = lungcancerscore)) +
   
@@ -70,19 +93,10 @@ ggplot(dd, aes(x = group, y = lungcancerscore)) +
   # Do not put any legend
   theme(legend.position = "none")
 
-# Find the p values:
-
-group1 <- dd$lungcancerscore[dd$group == "control"]
-group2 <- dd$lungcancerscore[dd$group == "lung cancer"]
-
-# Berechne den t-Test
-test_result <- t.test(group1, group2)
-
-# Zeige den p-Wert
-print(test_result$p.value)
 
 
-install.packages("pROC")
+
+# Visualize Figure 4C:
 
 library(pROC)
 
