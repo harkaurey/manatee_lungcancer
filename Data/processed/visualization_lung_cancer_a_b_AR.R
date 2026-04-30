@@ -21,7 +21,14 @@ View(dd)
 
 # Visualize the Boxplot:
 
+# Change the x-axis to contrl, benign and lung cancer.
 dd$group<- factor(dd$group,levels= levels(dd$group)[c(2, 1, 3)])
+
+# Calculate the p values between the groops:
+t.test(lungcancerscore ~ group,
+       data = subset(dd,
+                     group %in% c("control", "benign")))
+
 
 ggplot(dd, aes(x = group, y = lungcancerscore)) +
   
@@ -47,8 +54,93 @@ ggplot(dd, aes(x = group, y = lungcancerscore)) +
        y = "lung cancer score",
        title = "Lung cancer score, validation (UK)") +
   
+  stat_compare_means(
+    comparisons = list(
+      c("control", "benign"),
+      c("benign", "lung cancer"),
+      c("control", "lung cancer")
+    ),
+    method = "t.test", # Berechnet den t-Test
+    
+  ) +
+  
   # Theme
   theme_minimal() +
   
   # Do not put any legend
   theme(legend.position = "none")
+
+# Find the p values:
+
+group1 <- dd$lungcancerscore[dd$group == "control"]
+group2 <- dd$lungcancerscore[dd$group == "lung cancer"]
+
+# Berechne den t-Test
+test_result <- t.test(group1, group2)
+
+# Zeige den p-Wert
+print(test_result$p.value)
+
+
+install.packages("pROC")
+
+library(pROC)
+
+# ROC 1
+dd$lc_vs_all <- ifelse(dd$group == "lung cancer", 1, 0)
+
+roc1 <- roc(dd$lc_vs_all,
+            dd$lungcancerscore)
+
+# ROC 2
+dd2 <- subset(dd,
+              group %in% c("benign", "lung cancer"))
+
+dd2$lc_vs_benign <- ifelse(dd2$group == "lung cancer", 1, 0)
+
+roc2 <- roc(dd2$lc_vs_benign,
+            dd2$lungcancerscore)
+
+# Plot
+plot(roc1,
+     col = "darkgrey",
+     lwd = 3,
+     legacy.axes = TRUE,
+     main = "Lung cancer score, validation (UK)")
+
+plot(roc2,
+     add = TRUE,
+     col = "lightgrey",
+     lwd = 3)
+
+legend("bottomright",
+       legend = c(
+         paste0("lung cancer vs control/benign\nAUC=",
+                round(auc(roc1), 3)),
+         paste0("lung cancer vs benign\nAUC=",
+                round(auc(roc2), 3))
+       ),
+       col = c("darkgrey", "lightgrey"),
+       lwd = 3,
+       bty = "n")
+
+legend("bottomright",
+       legend = c(
+         paste0("lung cancer vs control/benign\nAUC=",
+                round(auc(roc1), 3)),
+         " (95% CI ",
+         round(ci.auc(roc1)[1], 3),
+         "-",
+         round(ci.auc(roc1)[3], 3),
+         ")",
+         paste0("lung cancer vs benign\nAUC=",
+                round(auc(roc2), 3)),
+         " (95% CI ",
+         round(ci.auc(roc2)[1], 3),
+         "-",
+         round(ci.auc(roc2)[3], 3),
+         ")"
+       ),
+       col = c("darkgrey", "lightgrey"),
+       lwd = 3,
+       bty = "n")
