@@ -37,6 +37,8 @@ library(xgboost)
 library(caret)
 library(dplyr)
 library(pROC)
+library(e1071) #SVM
+library(nnet) #MLP 
 
 
 df <- read.csv("Data/processed/41698_2025_1043_MOESM3_ESM.csv")
@@ -48,6 +50,7 @@ df <- read.csv("Data/processed/41698_2025_1043_MOESM3_ESM.csv")
 
 #create outcome variable y
 df$y <- ifelse(df$group == "lung cancer", 1, 0)
+df$y <- as.factor(df$y)
 
 #clean smoking variable 
 df$smoking_binary <- ifelse(df$smokingstatus == "never", 0, 1)
@@ -108,7 +111,7 @@ results$method <- "logistic regression"
 
 ```
 
-Reproduce Figure 5A
+## Reproduce Figure 5A
 
 ```{r}
 #| label: pre-plot with logistic regression
@@ -142,3 +145,138 @@ ggplot(results, aes(x = auc, y = model)) +
   
   theme_minimal()
 ```
+
+## Do it all in one go 
+
+```{r}
+#| label: lr-models
+# models
+lr1 <- glm(y ~ lungcancerscore, data = df, family = "binomial")
+lr2 <- glm(y ~ age, data = df, family = "binomial")
+lr3 <- glm(y ~ smoking_binary, data = df, family = "binomial")
+lr4 <- glm(y ~ age + smoking_binary, data = df, family = "binomial")
+lr5 <- glm(y ~ lungcancerscore + age + smoking_binary, data = df, family = "binomial")
+
+# predictions
+p_lr1 <- predict(lr1, type = "response")
+p_lr2 <- predict(lr2, type = "response")
+p_lr3 <- predict(lr3, type = "response")
+p_lr4 <- predict(lr4, type = "response")
+p_lr5 <- predict(lr5, type = "response")
+
+# results
+lr_results <- bind_rows(
+  get_auc(p_lr1, df$y) %>% mutate(model = "lung cancer score"),
+  get_auc(p_lr2, df$y) %>% mutate(model = "age"),
+  get_auc(p_lr3, df$y) %>% mutate(model = "smoking"),
+  get_auc(p_lr4, df$y) %>% mutate(model = "age + smoking"),
+  get_auc(p_lr5, df$y) %>% mutate(model = "lung cancer score + age + smoking")
+)
+
+lr_results$method <- "logistic regression"
+```
+
+```{r}
+#| label: svm-models 
+
+get_svm_auc <- function(formula, model_name) {
+  m <- svm(formula, data = df, probability = TRUE)
+  pred <- predict(m, newdata = df, probability = TRUE)
+  probs <- attr(pred, "probabilities")
+  
+  # check column name
+  col <- colnames(probs)[2]
+  p <- probs[, col]
+  
+  get_auc(p, df$y) %>%
+    mutate(model = model_name, method = "SVM")
+}
+
+svm_results <- bind_rows(
+  get_svm_auc(y ~ lungcancerscore, "lung cancer score"),
+  get_svm_auc(y ~ age, "age"),
+  get_svm_auc(y ~ smoking_binary, "smoking"),
+  get_svm_auc(y ~ age + smoking_binary, "age + smoking"),
+  get_svm_auc(y ~ lungcancerscore + age + smoking_binary,
+              "lung cancer score + age + smoking")
+)
+
+
+```
+
+```{r}
+#| label: MLP-models
+
+get_mlp_auc <- function(formula, model_name) {
+  m <- nnet(formula, data = df, size = 3, trace = FALSE)
+  p <- predict(m, type = "raw")
+  
+  get_auc(p, df$y) %>%
+    mutate(model = model_name, method = "MLP")
+}
+
+mlp_results <- bind_rows(
+  get_mlp_auc(y ~ lungcancerscore, "lung cancer score"),
+  get_mlp_auc(y ~ age, "age"),
+  get_mlp_auc(y ~ smoking_binary, "smoking"),
+  get_mlp_auc(y ~ age + smoking_binary, "age + smoking"),
+  get_mlp_auc(y ~ lungcancerscore + age + smoking_binary,
+              "lung cancer score + age + smoking")
+)
+
+```
+
+```{r}
+#| label: combine all results
+
+results_all <- bind_rows(lr_results, svm_results, mlp_results)
+```
+
+```{r}
+library(forcats)
+
+results_all$model <- fct_rev(factor(results_all$model, levels = c(
+  "lung cancer score",
+  "age",
+  "smoking",
+  "age + smoking",
+  "lung cancer score + age + smoking"
+)))
+
+ggplot(results_all, aes(x = auc, y = model, color = method)) +
+  
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  
+  geom_errorbarh(
+    aes(xmin = lower_ci, xmax = upper_ci),
+    position = position_dodge(width = 0.5),
+    height = 0.2
+  ) +
+  
+  geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
+             linetype = "dashed", color = "grey70") +
+  
+  scale_color_manual(values = c(
+    "logistic regression" = "black",
+    "SVM" = "#1f77b4",
+    "MLP" = "#9467bd"
+  )) +
+  
+  labs(
+    title = "AUC of lung cancer vs control/benign (validation UK)",
+    x = "AUC",
+    y = NULL,
+    color = NULL
+  ) +
+  
+  xlim(0.55, 0.9) +
+  
+  theme_minimal() +
+  
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_text(size = 12)
+  )
+```
+
+We can see that in full model the MLP is shifted towards left that is because we trained the model on the data set we have and not like in the paper. So the model is instable. It is not biological. Let me try to fix this.
