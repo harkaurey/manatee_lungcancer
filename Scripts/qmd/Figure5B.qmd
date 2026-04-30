@@ -1,4 +1,5 @@
 ---
+title: "Figure5B"
 author: "Anja Morgenthaler"
 date: today
 toc: true
@@ -20,25 +21,28 @@ df <- read.csv("/Users/anjam/Desktop/Miniproject/Data/processed/41698_2025_1043_
 library(dplyr)
 
 df <- df[, c("age", "smokingstatus", "group", "lungcancerscore")]
+dfNOcontrol <- df[df$group != "control", ]
 ```
 
 ## cleaning data
 
 ```{r}
 df$group <- ifelse(df$group =="lung cancer", 1, 0)
+dfNOcontrol$group <- ifelse(dfNOcontrol$group =="lung cancer", 1, 0)
 
 ```
 
 ## fitting a model
 ```{r}
 mod1 <- glm(group ~ lungcancerscore + age + smokingstatus, data = df, family = binomial)
-summary(mod1)
+mod2 <- glm(group ~ lungcancerscore + age + smokingstatus, data = dfNOcontrol, family = binomial)
 ```
 
 ## predicting 
 
 ```{r}
 df$prob <- predict(mod1, type = "response")
+dfNOcontrol$prob <- predict(mod2, type = "response")
 ```
 
 ## ROC curve
