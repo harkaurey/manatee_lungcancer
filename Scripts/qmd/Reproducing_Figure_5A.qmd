@@ -1,0 +1,282 @@
+---
+title: "Reproducing figure 5a"
+author: "Harchit Kaur"
+date: today 
+project: 
+  output-dir: Output
+  execute-dir: project
+toc: true 
+format: 
+  html: 
+    embed-resources: true
+    number-sections: true
+    code-fold: true
+editor: visual 
+editor_options: 
+  chunk_output_type: console
+execute:
+  warning: false 
+  message: false
+  freeze: false 
+---
+
+## Prepare Session
+
+```{r}
+#| label: libraries and data import 
+#| echo: false
+
+
+library(ROCR)
+#library(MetaIntegrator)
+library(ggplot2)
+library(parallel)
+library(OptimalCutpoints)
+library(data.table)
+library(xgboost)
+library(caret)
+library(dplyr)
+library(pROC)
+library(e1071) #SVM
+library(nnet) #MLP 
+
+
+df <- read.csv("Data/processed/41698_2025_1043_MOESM3_ESM.csv")
+
+```
+
+```{r}
+#| label: clean dataset
+
+#create outcome variable y
+df$y <- ifelse(df$group == "lung cancer", 1, 0)
+df$y <- as.factor(df$y)
+
+#clean smoking variable 
+df$smoking_binary <- ifelse(df$smokingstatus == "never", 0, 1)
+
+#compute AUC function 
+
+get_auc <- function(pred, truth) {
+  roc_obj <- roc(truth, pred)
+  
+  auc_val <- as.numeric(auc(roc_obj))
+  ci_vals <- ci.auc(roc_obj)
+  
+  data.frame(
+    auc = auc_val,
+    lower_ci = ci_vals[1],
+    upper_ci = ci_vals[3]
+  )
+}
+```
+
+## Fit models
+
+```{r}
+#| label: build models
+
+m1 <- glm(y ~ luncancerscore, data = df, family = "binomial")
+p1 <- predict(m1, type = "response")
+r1 <- get_auc(p1, df$y)
+r1$model <- "lung cancer score"
+
+m2 <- glm(y ~ age, data = df, family = "binomial")
+p2 <- predict(m2, type = "response")
+r2 <- get_auc(p2, df$y)
+r2$model <- "age"
+
+
+m3 <- glm(y ~ smoking_binary, data = df, family = "binomial")
+p3 <- predict(m3, type = "response")
+r3 <- get_auc(p3, df$y)
+r3$model <- "smoking"
+
+
+m4 <- glm(y ~ age + smoking_binary, data = df, family = "binomial")
+p4 <- predict(m4, type = "response")
+r4 <- get_auc(p4, df$y)
+r4$model <- "age + smoking"
+
+m5 <- glm(y ~ luncancerscore + age + smoking_binary, data = df, family = "binomial")
+p5 <- predict(m5, type = "response")
+r5 <- get_auc(p5, df$y)
+r5$model <- "lung cancer score + age + smoking"
+
+
+results <- bind_rows(r1, r2, r3, r4, r5)
+results$method <- "logistic regression"
+
+
+
+```
+
+## Reproduce Figure 5A
+
+```{r}
+#| label: pre-plot with logistic regression
+
+results$model <- factor(results$model, levels = c(
+  "lung cancer score",
+  "age",
+  "smoking",
+  "age + smoking",
+  "lung cancer score + age + smoking"
+))
+
+ggplot(results, aes(x = auc, y = model)) +
+  
+  geom_point(size = 3) +
+  
+  geom_errorbarh(aes(xmin = lower_ci, xmax = upper_ci), height = 0.2) +
+  
+  geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
+             linetype = "dashed", color = "grey70") +
+  
+  scale_y_discrete(limits = rev(levels(results$model))) +
+  
+  labs(
+    title = "AUC of lung cancer vs control/benign (validation UK)",
+    x = "AUC",
+    y = NULL
+  ) +
+  
+  xlim(0.55, 0.9) +
+  
+  theme_minimal()
+```
+
+## Do it all in one go 
+
+```{r}
+#| label: lr-models
+# models
+lr1 <- glm(y ~ lungcancerscore, data = df, family = "binomial")
+lr2 <- glm(y ~ age, data = df, family = "binomial")
+lr3 <- glm(y ~ smoking_binary, data = df, family = "binomial")
+lr4 <- glm(y ~ age + smoking_binary, data = df, family = "binomial")
+lr5 <- glm(y ~ lungcancerscore + age + smoking_binary, data = df, family = "binomial")
+
+# predictions
+p_lr1 <- predict(lr1, type = "response")
+p_lr2 <- predict(lr2, type = "response")
+p_lr3 <- predict(lr3, type = "response")
+p_lr4 <- predict(lr4, type = "response")
+p_lr5 <- predict(lr5, type = "response")
+
+# results
+lr_results <- bind_rows(
+  get_auc(p_lr1, df$y) %>% mutate(model = "lung cancer score"),
+  get_auc(p_lr2, df$y) %>% mutate(model = "age"),
+  get_auc(p_lr3, df$y) %>% mutate(model = "smoking"),
+  get_auc(p_lr4, df$y) %>% mutate(model = "age + smoking"),
+  get_auc(p_lr5, df$y) %>% mutate(model = "lung cancer score + age + smoking")
+)
+
+lr_results$method <- "logistic regression"
+```
+
+```{r}
+#| label: svm-models 
+
+get_svm_auc <- function(formula, model_name) {
+  m <- svm(formula, data = df, probability = TRUE)
+  pred <- predict(m, newdata = df, probability = TRUE)
+  probs <- attr(pred, "probabilities")
+  
+  # check column name
+  col <- colnames(probs)[2]
+  p <- probs[, col]
+  
+  get_auc(p, df$y) %>%
+    mutate(model = model_name, method = "SVM")
+}
+
+svm_results <- bind_rows(
+  get_svm_auc(y ~ lungcancerscore, "lung cancer score"),
+  get_svm_auc(y ~ age, "age"),
+  get_svm_auc(y ~ smoking_binary, "smoking"),
+  get_svm_auc(y ~ age + smoking_binary, "age + smoking"),
+  get_svm_auc(y ~ lungcancerscore + age + smoking_binary,
+              "lung cancer score + age + smoking")
+)
+
+
+```
+
+```{r}
+#| label: MLP-models
+
+get_mlp_auc <- function(formula, model_name) {
+  m <- nnet(formula, data = df, size = 3, trace = FALSE)
+  p <- predict(m, type = "raw")
+  
+  get_auc(p, df$y) %>%
+    mutate(model = model_name, method = "MLP")
+}
+
+mlp_results <- bind_rows(
+  get_mlp_auc(y ~ lungcancerscore, "lung cancer score"),
+  get_mlp_auc(y ~ age, "age"),
+  get_mlp_auc(y ~ smoking_binary, "smoking"),
+  get_mlp_auc(y ~ age + smoking_binary, "age + smoking"),
+  get_mlp_auc(y ~ lungcancerscore + age + smoking_binary,
+              "lung cancer score + age + smoking")
+)
+
+```
+
+```{r}
+#| label: combine all results
+
+results_all <- bind_rows(lr_results, svm_results, mlp_results)
+```
+
+```{r}
+library(forcats)
+
+results_all$model <- fct_rev(factor(results_all$model, levels = c(
+  "lung cancer score",
+  "age",
+  "smoking",
+  "age + smoking",
+  "lung cancer score + age + smoking"
+)))
+
+ggplot(results_all, aes(x = auc, y = model, color = method)) +
+  
+  geom_point(position = position_dodge(width = 0.5), size = 3) +
+  
+  geom_errorbarh(
+    aes(xmin = lower_ci, xmax = upper_ci),
+    position = position_dodge(width = 0.5),
+    height = 0.2
+  ) +
+  
+  geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
+             linetype = "dashed", color = "grey70") +
+  
+  scale_color_manual(values = c(
+    "logistic regression" = "black",
+    "SVM" = "#1f77b4",
+    "MLP" = "#9467bd"
+  )) +
+  
+  labs(
+    title = "AUC of lung cancer vs control/benign (validation UK)",
+    x = "AUC",
+    y = NULL,
+    color = NULL
+  ) +
+  
+  xlim(0.55, 0.9) +
+  
+  theme_minimal() +
+  
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_text(size = 12)
+  )
+```
+
+We can see that in full model the MLP is shifted towards left that is because we trained the model on the data set we have and not like in the paper. So the model is instable. It is not biological. Let me try to fix this.
