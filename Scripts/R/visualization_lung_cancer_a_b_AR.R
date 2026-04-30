@@ -76,7 +76,8 @@ ggplot(dd, aes(group, lungcancerscore)) +
       c("control", "lung cancer")
     ),
     method = "wilcox.test",
-    p.adjust.method = "bonferroni"
+    p.adjust.method = "bonferroni",
+    size = 6
   ) +
   
   theme_minimal() +
@@ -112,7 +113,11 @@ plot(roc1,
      legacy.axes = TRUE,
      main = "Lung cancer score, validation (UK)",
      xlab = "false positive rate (1-specificity)",
-     ylab = "true positive rate (sensitivity)")
+     ylab = "true positive rate (sensitivity)",
+     # Größen
+     cex.lab = 1.5,   # Achsentitel
+     cex.axis = 1.3,  # Achsenzahlen
+     cex.main = 1.7 )  # Titel)
 
 plot(roc2,
      add = TRUE,
@@ -145,5 +150,6 @@ legend("bottomright",
        ),
        col = c("darkgrey", "lightgrey"),
        lwd = 3,
-       bty = "n")
+       bty = "n",
+       cex = 1.2)
 
