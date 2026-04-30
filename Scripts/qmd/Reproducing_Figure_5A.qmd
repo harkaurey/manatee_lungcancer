@@ -91,7 +91,7 @@ get_auc <- function(pred, truth) {
 }
 ```
 
-## Fit models
+## Fit models and plot graph
 
 ```{r}
 #| label: cross validation
@@ -160,24 +160,21 @@ mlp_results <- bind_rows(lapply(names(mlp_models), function(name) {
 ```{r}
 #| label: combine all results
 
-# 1. combine results
+# 1. combine
 results_all <- bind_rows(lr_results, svm_results, mlp_results)
 
-# 2. set order
-results_all$model <- factor(results_all$model, levels = c(
+# 2. define correct order (bottom → top)
+order_levels <- c(
   "lung cancer score",
   "age",
   "smoking",
   "age + smoking",
   "lung cancer score + age + smoking"
-))
-
-levels = c(
-  "lung cancer score",   # bottom
-  "lung cancer score + age + smoking"  # top
 )
 
-# 3. split
+results_all$model <- factor(results_all$model, levels = order_levels)
+
+# 3. split ONCE
 single_models <- results_all %>%
   filter(model %in% c("lung cancer score", "age", "smoking"),
          method == "logistic regression")
@@ -185,75 +182,13 @@ single_models <- results_all %>%
 multi_models <- results_all %>%
   filter(model %in% c("age + smoking", "lung cancer score + age + smoking"))
 
-order_levels <- c(
-  "smoking",
-  "age",
-  "lung cancer score",
-  "age + smoking",
-  "lung cancer score + age + smoking"
-)
-
+# 4. reapply order (IMPORTANT)
 single_models$model <- factor(single_models$model, levels = order_levels)
 multi_models$model  <- factor(multi_models$model,  levels = order_levels)
 
-levels(results_all$model)
-levels(single_models$model)
-```
-
-```{r}
-# ggplot(results_all, aes(x = auc, y = model, color = method)) +
-#   
-#   geom_point(position = position_dodge(width = 0.3), size = 3) +
-#   
-#   geom_errorbarh(
-#     aes(xmin = lower_ci, xmax = upper_ci),
-#     position = position_dodge(width = 0.3),
-#     height = 0.25,
-#     size = 1
-#   ) +
-#   
-#   geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
-#              linetype = "dashed", color = "grey70") +
-#   
-#   scale_color_manual(values = c(
-#     "logistic regression" = "black",
-#     "SVM" = "#1f77b4",
-#     "MLP" = "#9467bd"
-#   )) +
-#   
-#   labs(
-#     title = "AUC of lung cancer vs control/benign validation (UK)",
-#     x = NULL,
-#     y = NULL
-#   ) +
-#   
-#   xlim(0.55, 0.9) +
-#   
-#   theme_minimal() +
-#   
-#   theme(
-#     legend.position = "bottom",
-#     axis.text.y = element_text(size = 12)
-#   )
-```
-
-We can see that in full model the MLP is shifted towards left that is because we trained the model on the data set we have and not like in the paper. So the model is instable. It is not biological. Let me try to fix this.
-
-```{r}
-#| label: proper graph
-
-# split data properly
-single_models <- results_all %>%
-  filter(model %in% c("lung cancer score", "age", "smoking"),
-         method == "logistic regression")
-
-multi_models <- results_all %>%
-  filter(model %in% c("age + smoking", "lung cancer score + age + smoking"))
-
-# plot
+# 5. plot
 ggplot() +
-  
-  # SINGLE MODELS (NO DODGE → FIXES SMOKING CI)
+  scale_y_discrete(limits = rev(order_levels)) +
   geom_point(
     data = single_models,
     aes(x = auc, y = model),
@@ -269,7 +204,6 @@ ggplot() +
     color = "black"
   ) +
   
-  # MULTI MODELS (WITH DODGE)
   geom_point(
     data = multi_models,
     aes(x = auc, y = model, color = method),
@@ -289,7 +223,7 @@ ggplot() +
              linetype = "dashed", color = "grey70") +
   
   scale_color_manual(values = c(
-    "logistics regression" = "black",
+    "logistic regression" = "black",
     "SVM" = "#1f77b4",
     "MLP" = "#9467bd"
   )) +
@@ -300,7 +234,7 @@ ggplot() +
     y = NULL
   ) +
   
-  coord_cartesian(xlim = c(0.55, 0.9)) +
+  coord_cartesian(xlim = c(0.55, 0.95)) +
   
   theme_minimal() +
   theme(
@@ -309,6 +243,8 @@ ggplot() +
     axis.text.y = element_text(size = 12)
   )
 ```
+
+We can see that in full model the MLP is shifted towards left that is because we trained the model on the data set we have and not like in the paper. So the model is instable. It is not biological. Let me try to fix this.
 
 ```{r}
 #| label: AUC values
@@ -319,5 +255,5 @@ model_svm$lr_models# -> test 3 different lr models - low C means simple value an
 model_svm$results # -> test 3 different SVM models - low C means simple value and vice verca
 model_mlp$results # -> test 3 different MLP models - low C means simple value and vice verca
 
-results_all %>% filter(model == "smoking")
+results_all %>% filter(model == "smoking"
 ```
