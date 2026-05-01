@@ -93,6 +93,16 @@ for (i in seq_along(thresholds2)) {
 
 ## Calculating the auc's
 ```{r}
+#order the fpr and tpr so they begin from the lowest and not highest values, so we 
+#don't get negaive auc's
+ord <- order(fpr)
+fpr <- fpr[ord]
+tpr <- tpr[ord]
+ord <- order(fpr2)
+fpr2 <- fpr2[ord]
+tpr2 <- tpr2[ord]
+
+#calculating area under curve
 auc <- sum(diff(fpr) * (head(tpr, -1) + tail(tpr, -1)) / 2)
 auc2 <- sum(diff(fpr2) * (head(tpr2, -1) + tail(tpr2, -1)) / 2)
 ```
@@ -103,10 +113,19 @@ auc2 <- sum(diff(fpr2) * (head(tpr2, -1) + tail(tpr2, -1)) / 2)
 plot(fpr, tpr, type = "l",
      xlab = "False Positive Rate",
      ylab = "True Positive Rate",
-     main = "ROC Curve")
+     main = "ROC Curve", col = "blue")
 
-abline(0, 1, col = "blue", lty = 2)
+abline(0, 1, lty = 2)
 lines(fpr2, tpr2, col = "red")
+
+#adding the auc's to the graph
+legend("bottomright",
+       legend = c(
+         paste("AUC mod1 =", round(auc, 3)),
+         paste("AUC mod2 =", round(auc2, 3))
+         ),
+        col = c("blue", "red"),
+       lty=1)
 
 ```
 
