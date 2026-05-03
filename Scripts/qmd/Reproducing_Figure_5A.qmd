@@ -244,8 +244,6 @@ ggplot() +
   )
 ```
 
-We can see that in full model the MLP is shifted towards left that is because we trained the model on the data set we have and not like in the paper. So the model is instable. It is not biological. Let me try to fix this.
-
 ```{r}
 #| label: AUC values
 # in caret AUC are labbeled as ROCSens (Sensitivity)
@@ -255,5 +253,5 @@ model_svm$lr_models# -> test 3 different lr models - low C means simple value an
 model_svm$results # -> test 3 different SVM models - low C means simple value and vice verca
 model_mlp$results # -> test 3 different MLP models - low C means simple value and vice verca
 
-results_all %>% filter(model == "smoking"
+
 ```
