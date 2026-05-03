@@ -20,6 +20,36 @@ execute:
   freeze: false 
 ---
 
+## DAGs
+
+```{r}
+library(dagitty)
+
+
+
+dag.crp <- dagitty(' dag {
+bb="0,0,1,1"
+"Diagnostic Group (Lung Cancer)" [outcome,pos="0.606,0.192"]
+"Lungcancer score" [exposure,pos="0.885,0.351"]
+Sex [adjusted,pos="0.174,0.186"]
+Smoking [adjusted,pos="0.180,0.467"]
+age [adjusted,pos="0.612,0.474"]
+
+"Diagnostic Group (Lung Cancer)" -> "Lungcancer score"
+
+Sex -> "Diagnostic Group (Lung Cancer)"
+Sex -> Smoking
+
+Smoking -> "Diagnostic Group (Lung Cancer)"
+
+age -> "Diagnostic Group (Lung Cancer)"
+age -> Smoking
+}
+')
+
+plot(dag.crp)
+```
+
 ## Prepare Session
 
 ```{r}
