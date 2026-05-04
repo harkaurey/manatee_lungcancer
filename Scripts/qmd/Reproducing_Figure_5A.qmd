@@ -20,45 +20,16 @@ execute:
   freeze: false 
 ---
 
-## DAGs
-
-```{r}
-library(dagitty)
-
-
-
-dag.crp <- dagitty(' dag {
-bb="0,0,1,1"
-"Diagnostic Group (Lung Cancer)" [outcome,pos="0.606,0.192"]
-"Lungcancer score" [exposure,pos="0.885,0.351"]
-Sex [adjusted,pos="0.174,0.186"]
-Smoking [adjusted,pos="0.180,0.467"]
-age [adjusted,pos="0.612,0.474"]
-
-"Diagnostic Group (Lung Cancer)" -> "Lungcancer score"
-
-Sex -> "Diagnostic Group (Lung Cancer)"
-Sex -> Smoking
-
-Smoking -> "Diagnostic Group (Lung Cancer)"
-
-age -> "Diagnostic Group (Lung Cancer)"
-age -> Smoking
-}
-')
-
-plot(dag.crp)
-```
-
 ## Prepare Session
 
 ```{r}
 #| label: libraries and data import 
 #| echo: false
 
+set.seed(123)
+
 
 library(ROCR)
-#library(MetaIntegrator)
 library(ggplot2)
 library(parallel)
 library(OptimalCutpoints)
@@ -71,9 +42,74 @@ library(e1071) #SVM
 library(nnet) #MLP 
 library(forcats)
 
-
 df <- read.csv("Data/processed/41698_2025_1043_MOESM3_ESM.csv")
 
+
+```
+
+```{r}
+#| label: nested CV function 
+
+nested_cv_model <- function(formula, data, method_name) {
+  
+  outer_folds <- createFolds(data$y_factor, k = 5, returnTrain = TRUE)
+  
+  all_preds <- c()
+  all_truth <- c()
+  
+  for (i in seq_along(outer_folds)) {
+    
+    train_idx <- outer_folds[[i]]
+    test_idx  <- setdiff(seq_len(nrow(data)), train_idx)
+    
+    train_data <- data[train_idx, ]
+    test_data  <- data[test_idx, ]
+    
+    # INNER CV (for tuning)
+    inner_ctrl <- trainControl(
+      method = "cv",
+      number = 5,
+      classProbs = TRUE,
+      summaryFunction = twoClassSummary
+    )
+    
+    model <- train(
+      formula,
+      data = train_data,
+      method = method_name,
+      metric = "ROC",
+      trControl = inner_ctrl
+    )
+    
+    # ---- CALIBRATION (Platt scaling) ----
+    train_probs <- predict(model, train_data, type = "prob")[, "cancer"]
+    
+    calib_model <- glm(
+      train_data$y_factor ~ train_probs,
+      family = binomial
+    )
+    
+    test_probs <- predict(model, test_data, type = "prob")[, "cancer"]
+    
+    calibrated_probs <- predict(
+      calib_model,
+      newdata = data.frame(train_probs = test_probs),
+      type = "response"
+    )
+    
+    all_preds <- c(all_preds, calibrated_probs)
+    all_truth <- c(all_truth, test_data$y_factor)
+  }
+  
+  # FINAL ROC + CI (correct method)
+  roc_obj <- roc(all_truth, all_preds)
+  
+  data.frame(
+    auc = as.numeric(auc(roc_obj)),
+    lower_ci = ci.auc(roc_obj)[1],
+    upper_ci = ci.auc(roc_obj)[3]
+  )
+}
 ```
 
 ```{r}
@@ -121,79 +157,76 @@ get_auc <- function(pred, truth) {
 }
 ```
 
-## Fit models and plot graph
-
-```{r}
-#| label: cross validation
-
-#use cross validation
-control <- trainControl(
-  method = "cv",
-  number = 5,
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary
-)
-
-#helper function
-get_best_auc <- function(model, model_name, method_name) {
-  best <- model$results[which.max(model$results$ROC), ]
-  
-  data.frame(
-    model = model_name,
-    method = method_name,
-    auc = best$ROC,
-    lower_ci = best$ROC - 1.96 * best$ROCSD,
-    upper_ci = best$ROC + 1.96 * best$ROCSD
-  )
-}
-```
+## Fit models
 
 ```{r}
 #| label: lr-models
-lr_models <- list(
-  "lung cancer score" = train(y_factor ~ lungcancerscore, df_scaled, method="glm", metric="ROC", trControl=control),
-  "age" = train(y_factor ~ age, df_scaled, method="glm", metric="ROC", trControl=control),
-  "smoking" = train(y_factor ~ smoking_binary, df_scaled, method="glm", metric="ROC", trControl=control),
-  "age + smoking" = train(y_factor ~ age + smoking_binary, df_scaled, method="glm", metric="ROC", trControl=control),
-  "lung cancer score + age + smoking" = train(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, method="glm", metric="ROC", trControl=control)
+
+lr_results <- bind_rows(
+  cbind(model = "lung cancer score",
+        method = "logistic regression",
+        nested_cv_model(y_factor ~ lungcancerscore, df_scaled, "glm")),
+  
+  cbind(model = "age",
+        method = "logistic regression",
+        nested_cv_model(y_factor ~ age, df_scaled, "glm")),
+  
+  cbind(model = "smoking",
+        method = "logistic regression",
+        nested_cv_model(y_factor ~ smoking_binary, df_scaled, "glm")),
+  
+  cbind(model = "age + smoking",
+        method = "logistic regression",
+        nested_cv_model(y_factor ~ age + smoking_binary, df_scaled, "glm")),
+  
+  cbind(model = "lung cancer score + age + smoking",
+        method = "logistic regression",
+        nested_cv_model(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, "glm"))
 )
 
-lr_results <- bind_rows(lapply(names(lr_models), function(name) {
-  get_best_auc(lr_models[[name]], name, "logistic regression")
-}))
 ```
 
 ```{r}
-#| label: svm-models 
+#| label: SVM-models
 
-svm_models <- list("age + smoking" = train(y_factor ~ age + smoking_binary, df_scaled, method="svmRadial", metric="ROC", trControl=control),
-  "lung cancer score + age + smoking" = train(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, method="svmRadial", metric="ROC", trControl=control)
+svm_results <- bind_rows(
+  cbind(model = "age + smoking",
+        method = "SVM",
+        nested_cv_model(y_factor ~ age + smoking_binary, df_scaled, "svmRadial")),
+  
+  cbind(model = "lung cancer score + age + smoking",
+        method = "SVM",
+        nested_cv_model(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, "svmRadial"))
 )
-
-svm_results <- bind_rows(lapply(names(svm_models), function(name) {
-  get_best_auc(svm_models[[name]], name, "SVM")
-}))
 ```
 
 ```{r}
 #| label: MLP-models
 
-mlp_models <- list("age + smoking" = train(y_factor ~ age + smoking_binary, df_scaled, method="nnet", metric="ROC", trControl=control, trace=FALSE),
-  "lung cancer score + age + smoking" = train(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, method="nnet", metric="ROC", trControl=control, trace=FALSE)
+mlp_results <- bind_rows(
+  cbind(model = "age + smoking",
+        method = "MLP",
+        nested_cv_model(y_factor ~ age + smoking_binary, df_scaled, "nnet")),
+  
+  cbind(model = "lung cancer score + age + smoking",
+        method = "MLP",
+        nested_cv_model(y_factor ~ lungcancerscore + age + smoking_binary, df_scaled, "nnet"))
 )
-
-mlp_results <- bind_rows(lapply(names(mlp_models), function(name) {
-  get_best_auc(mlp_models[[name]], name, "MLP")
-}))
 ```
 
 ```{r}
-#| label: combine all results
+#| label: combine results 
 
-# 1. combine
 results_all <- bind_rows(lr_results, svm_results, mlp_results)
 
-# 2. define correct order (bottom → top)
+```
+
+## Reproducing Figure 5A
+
+```{r}
+#| label: plot 
+
+# ---- ORDER (TOP → BOTTOM exactly like paper) ----
 order_levels <- c(
   "lung cancer score",
   "age",
@@ -204,7 +237,7 @@ order_levels <- c(
 
 results_all$model <- factor(results_all$model, levels = order_levels)
 
-# 3. split ONCE
+# ---- SPLIT ----
 single_models <- results_all %>%
   filter(model %in% c("lung cancer score", "age", "smoking"),
          method == "logistic regression")
@@ -212,13 +245,13 @@ single_models <- results_all %>%
 multi_models <- results_all %>%
   filter(model %in% c("age + smoking", "lung cancer score + age + smoking"))
 
-# 4. reapply order (IMPORTANT)
-single_models$model <- factor(single_models$model, levels = order_levels)
-multi_models$model  <- factor(multi_models$model,  levels = order_levels)
-
-# 5. plot
+# ---- PLOT ----
 ggplot() +
+  
+  # keep order EXACT (top = lung cancer score)
   scale_y_discrete(limits = rev(order_levels)) +
+  
+  # ---- SINGLE MODELS (black only) ----
   geom_point(
     data = single_models,
     aes(x = auc, y = model),
@@ -234,54 +267,87 @@ ggplot() +
     color = "black"
   ) +
   
+  # ---- MULTI MODELS (colored) ----
   geom_point(
     data = multi_models,
     aes(x = auc, y = model, color = method),
-    position = position_dodge(width = 0.3),
+    position = position_dodge(width = 0.35),
     size = 3
   ) +
   
   geom_errorbarh(
     data = multi_models,
     aes(xmin = lower_ci, xmax = upper_ci, y = model, color = method),
-    position = position_dodge(width = 0.3),
+    position = position_dodge(width = 0.35),
     height = 0.25,
     size = 1
   ) +
   
-  geom_vline(xintercept = c(0.6, 0.7, 0.8, 0.9),
-             linetype = "dashed", color = "grey70") +
-  
-  scale_color_manual(values = c(
-    "logistic regression" = "black",
-    "SVM" = "#1f77b4",
-    "MLP" = "#9467bd"
-  )) +
-  
-  labs(
-    title = "AUC of lung cancer vs control/benign validation (UK)",
-    x = NULL,
-    y = NULL
+  # ---- GRID LINES (vertical dashed) ----
+  geom_vline(
+    xintercept = c(0.6, 0.7, 0.8, 0.9),
+    linetype = "dashed",
+    color = "grey70"
   ) +
   
+  # ---- COLORS + LEGEND ORDER ----
+  scale_color_manual(
+    values = c(
+      "logistic regression" = "#8dd3c7",  # light teal
+      "SVM" = "#1f77b4",                  # blue
+      "MLP" = "#9467bd"                   # purple
+    ),
+    breaks = c("logistic regression", "SVM", "MLP")
+  ) +
+  
+  # ---- TITLE ----
+  labs(
+    title = "AUC of lung cancer vs. control/benign validation (UK)",
+    x = NULL,
+    y = NULL,
+    color = NULL
+  ) +
+  
+  # ---- AXIS RANGE ----
   coord_cartesian(xlim = c(0.55, 0.95)) +
   
-  theme_minimal() +
+  # ---- THEME (clean, like paper) ----
+  theme_minimal(base_size = 13) +
   theme(
     legend.position = "bottom",
-    legend.title = element_blank(),
-    axis.text.y = element_text(size = 12)
+    axis.text.y = element_text(size = 12),
+    panel.grid.major.y = element_blank(),  # remove horizontal grid
+    panel.grid.minor = element_blank()
   )
+
+
 ```
 
+## DAG: 
+
 ```{r}
-#| label: AUC values
-# in caret AUC are labbeled as ROCSens (Sensitivity)
-#Sens --> (Sensitivity): True positive rate How well you detect cancer
-#Spec --> (Specificity): True negative rate, How well you avoid false positives
-model_svm$lr_models# -> test 3 different lr models - low C means simple value and vice verca
-model_svm$results # -> test 3 different SVM models - low C means simple value and vice verca
-model_mlp$results # -> test 3 different MLP models - low C means simple value and vice verca
+#| label: fig-Dag
+library(dagitty)
 
+dag.crp <- dagitty(' dag {
+bb="0,0,1,1"
+"Diagnostic Group (Lung Cancer)" [outcome,pos="0.606,0.192"]
+"Lungcancer score" [exposure,pos="0.885,0.351"]
+Sex [adjusted,pos="0.174,0.186"]
+Smoking [adjusted,pos="0.180,0.467"]
+age [adjusted,pos="0.612,0.474"]
 
+"Diagnostic Group (Lung Cancer)" -> "Lungcancer score"
+
+Sex -> "Diagnostic Group (Lung Cancer)"
+Sex -> Smoking
+
+Smoking -> "Diagnostic Group (Lung Cancer)"
+
+age -> "Diagnostic Group (Lung Cancer)"
+age -> Smoking
+}
+')
+
+plot(dag.crp)
 ```
